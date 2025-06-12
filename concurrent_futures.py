@@ -16,10 +16,10 @@ non-preempt = max_workers 수만큼만 동시에 실행됨.
             작업이 끝난 worker 가 대기중 작업을 큐에서 꺼내서 실행.
 
 일반 스레드에서는 event.wait() 나 queue.get() 으로 자원을 계속 낭비하는 것을 막았음. 
-PoolExecutor 가 worker 자원을 효율적으로 관리해줌 (작업이 없을경우 worker 가 cpu 자원 소모 안함함)
+PoolExecutor 가 worker 자원을 효율적으로 관리해줌 (작업이 없을경우 worker 가 cpu 자원 소모 거의 안함)
 
-executor 재사용하고 싶으면 그냥 executor 반환 (with 으로 열었을때는 작업이 끝나면 닫힘.)
-나중에 다시 사용할때 worker 스레드를 재생성해야하므로 로드가 걸림?
+executor 재사용하고 싶으면 그냥 executor 반환 
+(with 으로 열었을때는 작업이 끝나면 닫힘.나중에 다시 사용할때 worker 스레드를 재생성해야하므로 로드가 걸림)
 executor 는 모든 작업이 끝나고 꼭 닫아야함!!
 
 executor.submit(func, *args)
@@ -88,21 +88,27 @@ async def threadPool_prod_consum():
 
 """
 ProcessPoolExecutor 는 producer-consumer 에 적합하지 않음.
-pickle 가능한 객체만 실행,반환 가능
-It uses standard "pickle" to serialize all arguments.
-(multiprocessing.queue 안에 lock, pipe 등 pickle 가능하지 않은 것들이 있음.)
+    -> pickle 가능한 객체만 실행,반환 가능
+    It uses standard "pickle" to serialize all arguments.
+    -> multiprocessing.queue 안에 lock, pipe 등 pickle 가능하지 않은 요소 있음
+    
 멀티프로세스에서는 queue가 왜 됨?
-    -> linux 에서는 memory space 를 받아서 사용. (피클 x)
+    -> linux 에서는 fork 방식. 부모 프로세스의 memory space 를 그대로 받아서 사용. (피클 x)
+
     -> windows 에선
-        multiprocessing.Queue is picklable via a special method: 
-        it serializes a reference to the internal pipe and 
-        lock using handles that Windows can duplicate.
-        This is handled explicitly in multiprocessing.reduction module, 
-        which contains logic for reducing (pickling) 
-        IPC primitives like Queue, Pipe, Lock.
-        
+        - spawn 방식. (새로운 파이썬 인터프리터 실행 후 main 모듈을 임포트함.)
+        - multiprocessing.Queue는 picklable 하도록 특별히 구현됨.
+        - multiprocessing.reduction 모듈이 내부적으로 Pipe, Lock 등의 핸들을
+          "핸들 복제(handle duplication)" 방식으로 직렬화해서 전달함.
+
+대안
 manager.queue() 로 구현은 가능. (프록시 큐)
 효율적이지 않음.
+    -> 내부적으로 프록시 서버를 통해 통신하므로 latency가 있음.
+
+결론:
+    - ProcessPoolExecutor는 공유 큐가 필요한 producer-consumer 구조에는 부적합
+    - 대신 단방향 작업 분산(map, submit 등)에는 매우 적합
 """
 def producer_proc(name, q):
     for i in range(5):
